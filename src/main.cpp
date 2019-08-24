@@ -57,7 +57,7 @@ static const PortDescriptor segmentPorts[12] = {
     { 0, 5 }, // LCD Pin 14
 };
 
-static const uint16_t LCD_AC_FREQ = 32;
+static const uint8_t LCD_AC_FREQ = 32;
 
 void setup()
 {	
@@ -122,7 +122,7 @@ ISR(TIMER2_COMPA_vect)        // uint16_terrupt service routine
     static uint8_t segmentTestPhase = 0;
     static uint8_t commonTestPhase = 0;
     
-#if 0
+#if 1
     // From DataWeek "Bare LCD display drive in embedded applications"
     const uint8_t phase = (counter % 8);
     const uint8_t common = (phase % 4);
