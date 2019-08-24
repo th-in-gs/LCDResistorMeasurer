@@ -19,8 +19,8 @@
 
 
 struct PortDescriptor {
-    const byte portNumber;
-    const byte offset;
+    const uint8_t portNumber;
+    const uint8_t offset;
 };
 
 static const typeof(&PORTB) Ports[] = {
@@ -57,7 +57,7 @@ static const PortDescriptor segmentPorts[12] = {
     { 0, 5 }, // LCD Pin 14
 };
 
-static const int LCD_AC_FREQ = 32;
+static const uint16_t LCD_AC_FREQ = 32;
 
 void setup()
 {	
@@ -75,7 +75,7 @@ void setup()
     sbi(DDRB, 5);
     cbi(PORTB, 5);
     
-    static const int timer_reset_count = ((F_CPU / 1024) / ((int)LCD_AC_FREQ * (int)8));
+    static const uint16_t timer_reset_count = ((F_CPU / 1024) / ((uint16_t)LCD_AC_FREQ * (uint16_t)8));
     static_assert(timer_reset_count <= 255, "timer_reset_count is too large!");
     
     
@@ -111,36 +111,36 @@ void setup()
     interrupts();
 }
 
-// interrupt service routine 
+// uint16_terrupt service routine 
 #ifdef __AVR_ATmega8__
 ISR(TIMER2_COMP_vect)
 #else
-ISR(TIMER2_COMPA_vect)        // interrupt service routine 
+ISR(TIMER2_COMPA_vect)        // uint16_terrupt service routine 
 #endif
 {
-    static byte counter = 0;
-    static byte segmentTestPhase = 0;
-    static byte commonTestPhase = 0;
+    static uint8_t counter = 0;
+    static uint8_t segmentTestPhase = 0;
+    static uint8_t commonTestPhase = 0;
     
 #if 0
     // From DataWeek "Bare LCD display drive in embedded applications"
-    const byte phase = (counter % 8);
-    const byte common = (phase % 4);
+    const uint8_t phase = (counter % 8);
+    const uint8_t common = (phase % 4);
     const bool commonUpPhase = (phase < 4);
 #else
     // From AVR340 Application Note. 
-    const byte phase = (counter % 8);
-    const byte common = (phase / 2);
+    const uint8_t phase = (counter % 8);
+    const uint8_t common = (phase / 2);
     const bool commonUpPhase = (phase % 2);
 #endif
 
     noInterrupts(); 
 
-    byte buildPorts[] = { *Ports[0], *Ports[1], *Ports[2] };
-    byte buildDDRs[] = { *DDRs[0], *DDRs[1], *DDRs[2] };
+    uint8_t buildPorts[] = { *Ports[0], *Ports[1], *Ports[2] };
+    uint8_t buildDDRs[] = { *DDRs[0], *DDRs[1], *DDRs[2] };
         
     {
-        byte i = 0;
+        uint8_t i = 0;
         for(auto port : commonPorts) {
             if(i == common) {
                 sbi(buildDDRs[port.portNumber], port.offset);
@@ -158,7 +158,7 @@ ISR(TIMER2_COMPA_vect)        // interrupt service routine
     }
 
     {
-        byte i = 0;
+        uint8_t i = 0;
         for(auto port : segmentPorts) {
             if(i == segmentTestPhase && common == commonTestPhase) {
                 if(commonUpPhase) {
@@ -177,7 +177,7 @@ ISR(TIMER2_COMPA_vect)        // interrupt service routine
         }
     }
         
-    for(int i = 0; i < 3; ++i) {
+    for(uint16_t i = 0; i < 3; ++i) {
         if(*DDRs[i] != buildDDRs[i]) {
             *DDRs[i] = buildDDRs[i];
         }
@@ -190,8 +190,8 @@ ISR(TIMER2_COMPA_vect)        // interrupt service routine
    
     ++counter;
     
-    static const byte resetSteps = []() {
-        byte i = (LCD_AC_FREQ * 2);
+    static const uint8_t resetSteps = []() {
+        uint8_t i = (LCD_AC_FREQ * 2);
         i = (i + 7) / 8 * 8;
         return i;
     }();
