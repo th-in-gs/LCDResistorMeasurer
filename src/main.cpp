@@ -36,25 +36,25 @@ static const typeof(&DDRB) DDRs[] = {
 };
 
 static const PortDescriptor commonPorts[4] = {
-    { 2, 5 },
-    { 2, 4 },
-    { 2, 3 },
-    { 2, 2 },
+    { 2, 0 }, // LCD Pin  1
+    { 2, 1 }, // LCD Pin  2
+    { 2, 2 }, // LCD Pin 17
+    { 2, 3 }, // LCD Pin 18
 };
 
 static const PortDescriptor segmentPorts[12] = {
-    { 2, 6 },
-    { 2, 7 },
-    { 0, 0 },
-    { 0, 1 },
-    { 0, 2 },
-    { 0, 3 },
-    { 0, 4 },
-    { 1, 0 },
-    { 1, 1 },
-    { 1, 2 },
-    { 1, 3 },
-    { 1, 4 },
+    { 2, 4 }, // LCD Pin  3
+    { 0, 6 }, // LCD Pin  4
+    { 0, 7 }, // LCD Pin  5
+    { 2, 5 }, // LCD Pin  6
+    { 2, 6 }, // LCD Pin  7
+    { 2, 7 }, // LCD Pin  8
+    { 0, 0 }, // LCD Pin  9
+    { 0, 1 }, // LCD Pin 10
+    { 0, 2 }, // LCD Pin 11
+    { 0, 3 }, // LCD Pin 12
+    { 0, 4 }, // LCD Pin 13
+    { 0, 5 }, // LCD Pin 14
 };
 
 static const int LCD_AC_FREQ = 32;
@@ -87,7 +87,7 @@ void setup()
         TCCR2 |= (1 << WGM21);              	           // CTC ("Clear Timer/Counter") Mode
         TCCR2 |= (1 << CS22) | (1 << CS21) | (1 << CS20);  // A 1024 prescaler  
         
-        TIMSK |= (1 << OCIE2);                            // Output Compare Interupt Enable
+        TIMSK |= (1 << OCIE2);                             // Output Compare Interupt Enable
         
         // Set up the counter output compare to get the desired frequency.
         // Check for overflow, just in case...
@@ -122,7 +122,7 @@ ISR(TIMER2_COMPA_vect)        // interrupt service routine
     static byte segmentTestPhase = 0;
     static byte commonTestPhase = 0;
     
-#if 1
+#if 0
     // From DataWeek "Bare LCD display drive in embedded applications"
     const byte phase = (counter % 8);
     const byte common = (phase % 4);
@@ -190,7 +190,13 @@ ISR(TIMER2_COMPA_vect)        // interrupt service routine
    
     ++counter;
     
-    if((counter % (LCD_AC_FREQ * 2)) == 0) {
+    static const byte resetSteps = []() {
+        byte i = (LCD_AC_FREQ * 2);
+        i = (i + 7) / 8 * 8;
+        return i;
+    }();
+    
+    if((counter % resetSteps) == 0) {
         counter = 0;
         if(++segmentTestPhase == 12) {
             segmentTestPhase = 0;
