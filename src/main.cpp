@@ -57,6 +57,51 @@ static const PortDescriptor segmentPorts[12] = {
     { 0, 5 }, // LCD Pin 14
 };
 
+static const uint8_t SevenSegmentCodes[10] = {0xc0, 0xf9, 0xa4, 0xb0, 0x99, 0x92, 0x82, 0xf8, 0x80, 0x90};
+
+static const uint16_t LCDPinToBitPosition[19] = {
+    0,       // N/A
+    _BV(11), // Pin  1
+    _BV(12), // Pin  2
+    _BV( 0), // Pin  3
+    _BV( 1), // Pin  4
+    _BV( 2), // Pin  5
+    _BV( 3), // Pin  6
+    _BV( 4), // Pin  7
+    _BV( 5), // Pin  8
+    _BV( 6), // Pin  9
+    _BV( 7), // Pin 10
+    _BV( 8), // Pin 11
+    _BV( 9), // Pin 12
+    _BV(10), // Pin 13
+    _BV(11), // Pin 14
+    0,       // Pin 15
+    0,       // Pin 16
+    _BV(13), // Pin 17
+    _BV(14), // Pin 18
+};
+
+
+struct CommonAndSegment {
+    uint8_t commonPin;
+    uint8_t segmentPin;
+};
+
+static const CommonAndSegment CommonAndSegmentNULL = { 0, 0 };
+
+static const 
+
+/*
+static uint16_t numberPattern(uint8_t digit, uint8_t position) {
+    for (uint8_t i = 0, bits = SevenSegmentCodes[digit]; bits > 0; bits >>= 1, ++i) {
+        if(bits & 0b1) {
+
+        }
+        ++i;
+    }
+}
+*/
+
 static const uint8_t LCD_AC_FREQ = 32;
 
 void setup()
