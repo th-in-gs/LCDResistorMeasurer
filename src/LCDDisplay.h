@@ -3,6 +3,18 @@
 
 #include <stdint.h> 
 
+
+#ifndef cbi
+#define cbi(sfr, bit) (sfr &= ~_BV(bit))
+#endif
+#ifndef sbi
+#define sbi(sfr, bit) (sfr |= _BV(bit))
+#endif 
+#ifndef tbi
+#define tbi(sfr, bit) ((sfr&_BV(bit))?cbi(sfr, bit):sbi(sfr, bit))
+#endif 
+
+
 class LCDDisplay {
 public:
 
@@ -72,6 +84,7 @@ public:
 
     LCDDisplay() = default;
 
+    // The display uses all of ports B, C and D.
     void SetUp();
 
     void SetDigits(const uint16_t digits);
