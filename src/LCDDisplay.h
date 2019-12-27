@@ -87,7 +87,7 @@ public:
     // The display uses all of ports B, C and D.
     void SetUp();
 
-    void SetDigits(const uint16_t digits);
+    void SetDigits(const int16_t digits);
 
     void SetSymbol(const LEDSymbol symbol);
     void ClearSymbol(const LEDSymbol symbol);
