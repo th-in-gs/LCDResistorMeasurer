@@ -84,7 +84,7 @@ public:
 
     LCDDisplay() = default;
 
-    // The display uses all of ports B, C and D.
+    // The display uses all of ports B and D.
     void SetUp();
 
     void SetDigits(const int16_t digits);

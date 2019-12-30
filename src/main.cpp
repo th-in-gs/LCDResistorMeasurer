@@ -4,67 +4,41 @@
 #include "LCDDisplay.h"
 #include "ADCTables.h"
 
-
-typedef enum {
-    EOutputRangeE3,
-    EOutputRangeE6,
-    EOutputRangeE12,
-    EOutputRangeE24,
-  //  EOutputRangeE48,
-  //  EOutputRangeE96,
-} EOutputRange;
-
-
-/*
-E24	200 	10	    1000     *  10  - 1K
-	2000	100	    10000       100 - 10K 
-	20000	1000	100000   *  1K  - 100K
-	200000	10000	1000000  ?  10K - 1M
-	
-			
-E96	200	    100	    1000        100Ω - 1K
-	2000	1000	10000         1K - 10K
-	20000	10000	100000       10K - 100K
-	200000	100000	1000000     100K - 1M
-	2000000 1000000 10000000      1M - 10M
-*/
-
-
-/*
-    Have:
-        200
-        2210
-        20000
-        200000
-*/
-
-typedef enum {
-    MeasurementScale10to1000,
-    MeasurementScale1000to100000,
-} MeasurementScale;
-
 static LCDDisplay display;
 
 void setup()
 {
     display.SetUp();  
+    display.SetDigits(-1);
 
+    // Pins 0-4 are used to select test resistor. Set all to 0 for now.
     sbi(DDRC, 0);
-    sbi(PORTC, 0);
+    cbi(PORTC, 0);
 
+    sbi(DDRC, 1);
+    cbi(PORTC, 1);
+
+    sbi(DDRC, 2);
+    cbi(PORTC, 2);
+
+    sbi(DDRC, 3);
+    cbi(PORTC, 3);
+
+    sbi(DDRC, 4);
+    cbi(PORTC, 4);
+
+    // Pin 5 is the input ADC pin.  
     cbi(DDRC, 5);
     cbi(PORTC, 5);
-
-
+    
     ADCSRA = (1<<ADEN) | (1<<ADIE) | (1<<ADPS1) | (1<<ADPS0);
   	ADMUX = 0b00000101;
 
     ADCSRA |= 1<<ADSC;		// Start Conversion
-
-    display.SetDigits(-1);
 }
 
-static volatile uint16_t ADCReading;
+static volatile uint16_t ADCReading = 0;
+static volatile uint8_t ADCReadCount = 0;
 
 /*
     M = Max ADC value.
@@ -98,102 +72,236 @@ static volatile uint16_t ADCReading;
 
 */
 
+/*
+E24	200 	10	    1000     *  10  - 1K
+	2000	100	    10000       100 - 10K 
+	20000	1000	100000   *  1K  - 100K
+	200000	10000	1000000  ?  10K - 1M
+	
+			
+E96	200	    100	    1000        100Ω - 1K   *  200      200Ω
+	2000	1000	10000         1K - 10K  *  2200       2.2K
+	20000	10000	100000       10K - 100K *  20000     20K
+	200000	100000	1000000     100K - 1M   *  200000   200K
+  	2000000 1000000 10000000      1M - 10M  *  2000000    2M
+*/
 
-void loop()
-{    
-    /*
-        - Measure value
-        - Find nearest in table.
-            - If value > table end
-                - Switch to higher sampler
-            - If value < table end
-                - Switch to lower sampler
-        - Display value from table        
-    */
+struct ADCTable {
+    const uint16_t * PROGMEM values;
+    const uint16_t * PROGMEM ADCValues;
+    const uint8_t valuesCount;
+    const uint32_t valueMultiplier;
+};
     
-    uint16_t sampledValue;
-    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        sampledValue = ADCReading;
+static const ADCTable ADCTables[] = {
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1 },
+    { E96Values, E96ADCValues_220Ohm, E96ValuesCount, 10 },
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 100 },
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1000 },
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 10000 },
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 100000 },
+};
+static const int ADCTablesLength = sizeof(ADCTables) / sizeof(ADCTables[0]);
+    
+void loop()
+{
+    static int ADCTableIndex = ADCTablesLength;
+    static bool tryNewADCTable = true;
+
+    if(tryNewADCTable) {
+        cbi(PORTC, ADCTableIndex);
+        ADCTableIndex = (ADCTableIndex + 1) % ADCTablesLength;
+        sbi(PORTC, ADCTableIndex);
+        ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+            ADCReadCount = 0;
+        }
     }
 
+    uint16_t sampledADCValue;
+    bool ADCValueValid = false;
+    do {    
+        uint8_t readCount;
+        ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+            sampledADCValue = ADCReading;
+            readCount = ADCReadCount;
+        }
+        if(readCount >= 5) {
+            ADCValueValid = true;
+            
+            // Originally designed the circuit with the test and calibration resistors
+            // the opposite way around...
+            sampledADCValue = 1024 - sampledADCValue;
+        } else {
+            delay(16);
+        }
+    } while(!ADCValueValid);
+        
+        
     uint16_t displayValue;
-    if(sampledValue <= pgm_read_word_near(E24ADCValues_200Ohm)) {
+    
+    if(sampledADCValue <= pgm_read_word_near(ADCTables[ADCTableIndex].ADCValues)) {
         displayValue = 0;
-    } else if (sampledValue >= pgm_read_word_near(E24ADCValues_200Ohm + E24ValuesCount - 1)) {
+    } else if (sampledADCValue >= pgm_read_word_near(ADCTables[ADCTableIndex].ADCValues + ADCTables[ADCTableIndex].valuesCount - 1)) {
         displayValue = 999;
     } else {
-        const uint16_t *nearestElement = 
-            (const uint16_t *)bsearch(
-                &sampledValue,
-                E24ADCValues_200Ohm, 
-                E24ValuesCount, 
-                sizeof(E24ADCValues_200Ohm[0]),
-                [](const void *key, const void *element) {
-                    if(element <= E24ADCValues_200Ohm) {
-                        //display.SetSymbol(LCDDisplay::LEDSymbol::CautionTriangle);
+        const uint16_t *nearestElement = (const uint16_t *)bsearch(
+            &sampledADCValue,
+            ADCTables[ADCTableIndex].ADCValues, 
+            ADCTables[ADCTableIndex].valuesCount, 
+            sizeof(ADCTables[ADCTableIndex].ADCValues[0]),
+            [](const void *key, const void *element) {
+                if(element <= ADCTables[ADCTableIndex].ADCValues) {
+                    return -1;
+                } else if (element >= ADCTables[ADCTableIndex].ADCValues + ADCTables[ADCTableIndex].valuesCount - 1) {
+                    return 1;
+                } else {
+                    const uint16_t sampledADCValue = *((uint16_t *)key);
+                    const uint16_t prevValue = pgm_read_word_near((uint16_t *)element - 1);
+                    const uint16_t value = pgm_read_word_near(element);
+                    const uint16_t nextValue = pgm_read_word_near((uint16_t *)element + 1);
+                    
+                    if(sampledADCValue <= value - (value - prevValue) / 2) {
                         return -1;
-                    } else if (element >= E24ADCValues_200Ohm + E24ValuesCount - 1) {
-                       // display.SetSymbol(LCDDisplay::LEDSymbol::CautionTriangle);
+                    } else if(sampledADCValue > value + (nextValue - value) / 2) {
                         return 1;
                     } else {
-                        
-                        
-
-                        const uint16_t sampledValue = *((uint16_t *)key);
-                        const uint16_t prevValue = pgm_read_word_near((uint16_t *)element - 1);
-                        const uint16_t value = pgm_read_word_near(element);
-                        const uint16_t nextValue = pgm_read_word_near((uint16_t *)element + 1);
-                        
-                        /*display.SetDigits((uint16_t *)element - E24ADCValues_200Ohm);
-                        delay(500);
-                        display.SetDigits(prevValue);
-                        delay(500);
-                        display.SetDigits(value);
-                        delay(500);
-                        display.SetDigits(nextValue);
-                        delay(500);
-                        display.SetDigits(sampledValue);
-                        delay(1000);*/
-                        
-                        if(sampledValue <= value - (value - prevValue) / 2) {
-                            return -1;
-                        } else if(sampledValue > value + (nextValue - value) / 2) {
-                            return 1;
-                        } else {
-                            return 0;
-                        }
+                        return 0;
                     }
-            }); 
+                }
+            }
+        ); 
             
-        int foundIndex = nearestElement - E24ADCValues_200Ohm;
-        displayValue = pgm_read_word_near(E24Values + foundIndex);
-        //display.SetDigits(foundIndex);
-        //delay(2000);
+        int foundValueIndex = nearestElement - ADCTables[ADCTableIndex].ADCValues;
+        displayValue = pgm_read_word_near(ADCTables[ADCTableIndex].values + foundValueIndex);
     }
 
-    //display.SetDigits(sampledValue);
-    display.SetDigits(displayValue);
-    //delay(2000);
-                    
-/*    
-    static uint16_t currentDisplay = 0;
-
-    uint16_t newDisplay;
-    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        newDisplay = ADCReading;
-    }
-
-    if(newDisplay != currentDisplay) {
-        display.SetDigits(newDisplay);
-        currentDisplay = newDisplay;
-
-        display.ToggleSymbol(LCDDisplay::LEDSymbol::CautionTriangle);
+    if(displayValue <= 0 || displayValue >= 999) {
+        display.SetDigits(-1);
         
-        for(uint8_t i = 0; i < E24ValuesCount; ++i) {
-            uint16_t read = pgm_read_word_near(E24Values + i);
-            display.SetDigits(read);
+        if(!tryNewADCTable) {
+            display.SetSymbol(LCDDisplay::LEDSymbol::DottedUpsidedownT);
+            display.SetSymbol(LCDDisplay::LEDSymbol::ChartGoingNegative);
+            tryNewADCTable = true;
         }
-    }*/
+    } else {        
+        uint32_t resistorValue = displayValue * ADCTables[ADCTableIndex].valueMultiplier;
+        
+        char digits[11];
+        uint8_t digitsLength = snprintf(digits, sizeof(digits), "%" PRIu32, resistorValue);
+        if(digitsLength >= sizeof(digits)) {
+            digitsLength = sizeof(digits) - 1;
+        }
+        
+        uint16_t displayNumber = 0;
+        for(char *digitCursor = digits; *digitCursor != '\0' && digitCursor < digits + 3; ++digitCursor) {
+            displayNumber = displayNumber * 10 + (*digitCursor - '0');
+        }
+
+        display.SetDigits(displayNumber);
+        
+        char suffix = '\0';
+        uint8_t decimalPlace = 0xff;
+
+        switch(digitsLength) {
+            case 1:
+            case 2:
+            case 3: {
+                decimalPlace = 0;
+                suffix = '-';
+                break;
+            }
+            case 4: {
+                decimalPlace = 2;
+                suffix = 'k';
+                break;
+            }
+            case 5: {
+                decimalPlace = 1;
+                suffix = 'k';
+                break;
+            }
+            case 6: {
+                decimalPlace = 0;
+                suffix = 'k';
+                break;
+            }
+            case 7: {
+                decimalPlace = 2;
+                suffix = 'M';
+                break;
+            }
+            case 8: {
+                decimalPlace = 1;
+                suffix = 'M';
+                break;
+            }
+            case 9: {
+                decimalPlace = 0;
+                suffix = 'M';
+                break;
+            }
+            default: {
+                // Error - will be dealt with below.
+                break;
+            }
+        }
+        
+        switch(decimalPlace) {
+            case 0: {
+                display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
+                display.ClearSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
+                break;
+            }
+            case 1: {
+                display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
+                display.SetSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
+                break;
+            }
+            case 2: {
+                display.SetSymbol(LCDDisplay::LEDSymbol::Colon);
+                display.ClearSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
+                break;
+            }
+            default: {
+                // Error
+                display.SetSymbol(LCDDisplay::LEDSymbol::Colon);
+                display.SetSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
+                display.SetSymbol(LCDDisplay::LEDSymbol::CautionTriangle);
+                break;
+            }
+        }            
+         
+        switch(suffix) {
+            case '-': {
+                display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
+                display.ClearSymbol(LCDDisplay::LEDSymbol::UpArrowOnRight);
+                break;
+            }
+            case 'k': {
+                display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
+                display.SetSymbol(LCDDisplay::LEDSymbol::UpArrowOnRight);
+                break;
+            }
+            case 'M': {
+                display.SetSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
+                display.ClearSymbol(LCDDisplay::LEDSymbol::UpArrowOnRight);
+                break;
+            }
+            default: {
+                // Error.
+                display.SetSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
+                display.SetSymbol(LCDDisplay::LEDSymbol::UpArrowOnRight);
+                display.SetSymbol(LCDDisplay::LEDSymbol::TriangleInCircle);
+                break;
+            }
+        }
+        
+        if(tryNewADCTable) {
+            display.ClearSymbol(LCDDisplay::LEDSymbol::DottedUpsidedownT);
+            display.ClearSymbol(LCDDisplay::LEDSymbol::ChartGoingNegative);
+            tryNewADCTable = false;
+        }
+    }
 }
 
 
@@ -203,6 +311,7 @@ ISR(ADC_vect)
     
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
         ADCReading = thisReading;
+        ++ADCReadCount;
     }
 
 	ADCSRA |= 1<<ADSC;		// Start Conversion

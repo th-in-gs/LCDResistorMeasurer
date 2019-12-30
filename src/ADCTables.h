@@ -12,8 +12,16 @@
 #include <stdint.h>
 
 extern const uint16_t E24Values[] PROGMEM;
+extern const uint8_t  E24ValuesCount;
+
 extern const uint16_t E24ADCValues_200Ohm[] PROGMEM;
 
-extern const uint8_t E24ValuesCount;
+
+
+extern const uint16_t E96Values[] PROGMEM;
+extern const uint8_t E96ValuesCount;
+
+extern const uint16_t E96ADCValues_200Ohm[] PROGMEM;
+extern const uint16_t E96ADCValues_220Ohm[] PROGMEM;
 
 #endif /* ADCTables_h */

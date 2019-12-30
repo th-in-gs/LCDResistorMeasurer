@@ -14,30 +14,28 @@ struct PortDescriptor {
 
 static const typeof(&PORTB) Ports[] = {
     &PORTB,
-    &PORTC,
     &PORTD,
 };
 
 static const typeof(&DDRB) DDRs[] = {
     &DDRB,
-    &DDRC,
     &DDRD,
 };
 
 static const PortDescriptor commonPorts[4] = {
-    { 2, 0 }, // LCD Pin  1
-    { 2, 1 }, // LCD Pin  2
-    { 2, 2 }, // LCD Pin 17
-    { 2, 3 }, // LCD Pin 18
+    { 1, 0 }, // LCD Pin  1
+    { 1, 1 }, // LCD Pin  2
+    { 1, 2 }, // LCD Pin 17
+    { 1, 3 }, // LCD Pin 18
 };
 
 static const PortDescriptor segmentPorts[12] = {
-    { 2, 4 }, // LCD Pin  3
+    { 1, 4 }, // LCD Pin  3
     { 0, 6 }, // LCD Pin  4
     { 0, 7 }, // LCD Pin  5
-    { 2, 5 }, // LCD Pin  6
-    { 2, 6 }, // LCD Pin  7
-    { 2, 7 }, // LCD Pin  8
+    { 1, 5 }, // LCD Pin  6
+    { 1, 6 }, // LCD Pin  7
+    { 1, 7 }, // LCD Pin  8
     { 0, 0 }, // LCD Pin  9
     { 0, 1 }, // LCD Pin 10
     { 0, 2 }, // LCD Pin 11
@@ -328,8 +326,8 @@ ISR(TIMER2_COMPA_vect)
     uint16_t segmentPinsToLight = segmentPinStateByCommon[common];
 
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
-        uint8_t buildPorts[] = { *Ports[0], *Ports[1], *Ports[2] };
-        uint8_t buildDDRs[] = { *DDRs[0], *DDRs[1], *DDRs[2] };
+        uint8_t buildPorts[] = { *Ports[0], *Ports[1] };
+        uint8_t buildDDRs[] = { *DDRs[0], *DDRs[1] };
     
         {
             uint8_t i = 0;
@@ -368,7 +366,7 @@ ISR(TIMER2_COMPA_vect)
             }
         }
             
-        for(uint16_t i = 0; i < 3; ++i) {
+        for(uint16_t i = 0; i < sizeof(DDRs) / sizeof(DDRs[0]); ++i) {
             if(*DDRs[i] != buildDDRs[i]) {
                 *DDRs[i] = buildDDRs[i];
             }
@@ -382,7 +380,7 @@ ISR(TIMER2_COMPA_vect)
             phase = 0;
     
             // Copy this once per cycle, instead of reading it directly,
-            // so that eacy entire cyce has a 'balanced' AC voltage for
+            // so that each entire cycle has a 'balanced' AC voltage for
             // each segment.
             // Not sure if this is actually necessary?
             // Do it at the end of the interrupt so that the above stuff
