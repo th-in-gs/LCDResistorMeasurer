@@ -286,18 +286,14 @@ void LCDDisplay::SetSymbol(const LCDDisplay::LEDSymbol symbol) {
 void LCDDisplay::ClearSymbol(const LCDDisplay::LEDSymbol symbol) {
     uint16_t bit = _BV(symbol.SegmentPin());
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
-        DisplaySegmentStateByCommon[symbol.CommonPin()] ^= bit;
+        DisplaySegmentStateByCommon[symbol.CommonPin()] &= ~bit;
     }
 }
 
 void LCDDisplay::ToggleSymbol(const LCDDisplay::LEDSymbol symbol) {
     uint16_t bit = _BV(symbol.SegmentPin());
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
-        if((DisplaySegmentStateByCommon[symbol.CommonPin()] & bit) == bit) { 
-            DisplaySegmentStateByCommon[symbol.CommonPin()] ^= bit;
-        } else {
-            DisplaySegmentStateByCommon[symbol.CommonPin()] |= bit;
-        }
+        DisplaySegmentStateByCommon[symbol.CommonPin()] ^= bit;
     }
 }
 
