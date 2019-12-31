@@ -214,7 +214,8 @@ const uint16_t E96Values[] PROGMEM = {
     931,
     953,
     976,
-    1000
+    1000,
+    1020
 };
 const uint8_t E96ValuesCount = sizeof(E96Values)/sizeof(E96Values[0]);
 
