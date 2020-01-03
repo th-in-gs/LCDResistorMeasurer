@@ -99,7 +99,7 @@ struct ADCTable {
     const uint32_t valueMultiplier;
 };
     
-static const ADCTable ADCTables[] = {
+static const ADCTable ADCTables[] = { // Values before multiplication are in ohms/10.
     { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1 },
     { E96Values, E96ADCValues_221Ohm, E96ValuesCount, 10 },
     { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 100 },
@@ -192,6 +192,9 @@ void loop()
             resistorValue = displayValue * ADCTables[ADCTableIndex].valueMultiplier;
         }
         
+        // Values are in ohms/10, have three significant digits, and always have
+        // three digits (smallest is currently 57.6 ohms - or 576). 
+        
         char digits[11];
         uint8_t digitsLength = snprintf(digits, sizeof(digits), "%" PRIu32, resistorValue);
         if(digitsLength >= sizeof(digits)) {
@@ -209,39 +212,42 @@ void loop()
         uint8_t decimalPlace = 0xff;
 
         switch(digitsLength) {
-            case 1:
-            case 2:
             case 3: {
-                decimalPlace = 0;
+                decimalPlace = 1;
                 suffix = '-';
                 break;
             }
             case 4: {
-                decimalPlace = 2;
-                suffix = 'k';
+                decimalPlace = 0;
+                suffix = '-';
                 break;
             }
             case 5: {
-                decimalPlace = 1;
+                decimalPlace = 2;
                 suffix = 'k';
                 break;
             }
             case 6: {
-                decimalPlace = 0;
+                decimalPlace = 1;
                 suffix = 'k';
                 break;
             }
             case 7: {
+                decimalPlace = 0;
+                suffix = 'k';
+                break;
+            }
+            case 8: {
                 decimalPlace = 2;
                 suffix = 'M';
                 break;
             }
-            case 8: {
+            case 9: {
                 decimalPlace = 1;
                 suffix = 'M';
                 break;
             }
-            case 9: {
+            case 10: {
                 decimalPlace = 0;
                 suffix = 'M';
                 break;
