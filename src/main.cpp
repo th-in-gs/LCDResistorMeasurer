@@ -19,11 +19,11 @@ void setup()
     display.SetDigits(-1);
 
     // Bits 0-4 of PORTC are used to select test resistor. 
-    // Bit 5 is used for ADC input.
-    
-    // Leave all at high impedence (that's the default power-on state
-    // so we don't need to set anything up).
-    
+    // Switch on the pull-ups.
+    PORTC |= 0b11111;
+
+    // Bit 5 is used for ADC input. Leave it as input high-impedance
+        
     // Set up ADC options. Slowest conversion, interrupts.
     ADCSRA = (1<<ADEN) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0);
     
@@ -97,20 +97,21 @@ static const ADCTable ADCTables[] = { // Values before multiplication are in ohm
 static const auto ADCTablesLength = sizeof(ADCTables) / sizeof(ADCTables[0]);
     
 void loop()
-{
-    /*
-    static uint8_t ADCTableIndex = 4;
-    static bool tryNewADCTable = false;
-    sbi(DDRC, 4);
-    */
-    
+{ 
     static uint8_t ADCTableIndex = ADCTablesLength - 1;
     static bool tryNewADCTable = true;
 
     if(tryNewADCTable) {
+        // Pull the old port high.
+        sbi(PORTC, ADCTableIndex);
         cbi(DDRC, ADCTableIndex);
+        
         ADCTableIndex = (ADCTableIndex + 1) % ADCTablesLength;
+        
+        // Switch the new port to low output.
         sbi(DDRC, ADCTableIndex);
+        cbi(PORTC, ADCTableIndex);
+        
         ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
             ADCReadCount = 0;
         }
