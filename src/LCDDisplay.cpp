@@ -222,7 +222,7 @@ void LCDDisplay::SetUp() {
     }
 }
 
-static uint16_t DisplaySegmentStateByCommon[4] = {0};
+static volatile uint16_t DisplaySegmentStateByCommon[4] = {0};
 
 void LCDDisplay::SetDigits(int16_t digits) {
     uint16_t segmentPinsToLight[4] = {0};
@@ -235,7 +235,7 @@ void LCDDisplay::SetDigits(int16_t digits) {
         {
             auto digit = digits % 10;
             uint8_t segmentBitPattern = SevenSegmentCodes[digit];
-            for(int i = 0; segmentBitPattern != 0; ++i) {
+            for(uint8_t i = 0; segmentBitPattern != 0; ++i) {
                 if(segmentBitPattern & 0b1) {
                     LEDSymbol symbol = DigitSegmentSymbols[0][i];
                     segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
@@ -247,7 +247,7 @@ void LCDDisplay::SetDigits(int16_t digits) {
         if(digits >= 10) {
             auto digit = (digits / 10) % 10;
             uint8_t segmentBitPattern = SevenSegmentCodes[digit];
-            for(int i = 0; segmentBitPattern != 0; ++i) {
+            for(uint8_t i = 0; segmentBitPattern != 0; ++i) {
                 if(segmentBitPattern & 0b1) {
                     LEDSymbol symbol = DigitSegmentSymbols[1][i];
                     segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
@@ -259,7 +259,7 @@ void LCDDisplay::SetDigits(int16_t digits) {
         if(digits >= 100) {
             auto digit = (digits / 100) % 10;
             uint8_t segmentBitPattern = SevenSegmentCodes[digit];
-            for(int i = 0; segmentBitPattern != 0; ++i) {
+            for(uint8_t i = 0; segmentBitPattern != 0; ++i) {
                 if(segmentBitPattern & 0b1) {
                     LEDSymbol symbol = DigitSegmentSymbols[2][i];
                     segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
@@ -270,7 +270,7 @@ void LCDDisplay::SetDigits(int16_t digits) {
     }
 
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
-        for(int i = 0; i < 4; ++i) {
+        for(uint8_t i = 0; i < 4; ++i) {
             DisplaySegmentStateByCommon[i] = (DisplaySegmentStateByCommon[i] & ~(DigitSegmentPortMaskForCommon[i])) | segmentPinsToLight[i];
         }
     }
@@ -381,7 +381,9 @@ ISR(TIMER2_COMPA_vect)
             // Not sure if this is actually necessary?
             // Do it at the end of the interrupt so that the above stuff
             // runs at 'more constant' time w.r.t. the timer firing.
-            memcpy(segmentPinStateByCommon, DisplaySegmentStateByCommon, sizeof(DisplaySegmentStateByCommon));
+            for(uint8_t i = 0; i < sizeof(DisplaySegmentStateByCommon) / sizeof(DisplaySegmentStateByCommon[0]); ++i) {
+                segmentPinStateByCommon[i] = DisplaySegmentStateByCommon[i];
+            }
         }
     }
 }

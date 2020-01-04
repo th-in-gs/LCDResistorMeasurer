@@ -1,6 +1,5 @@
 #include <Arduino.h> 
 #include <util/atomic.h>
-#include <movingAvg.h>
 
 #include "LCDDisplay.h"
 #include "ADCTables.h"
@@ -9,42 +8,31 @@
 static LCDDisplay display;
 
 
-static movingAvg ADCReading(10);
-static volatile uint8_t ADCReadCount = 0;
+static volatile uint16_t ADCReadings[49];
+static const auto ADCReadingBufferLength = sizeof(ADCReadings) / sizeof(ADCReadings[0]);
+
+static volatile uint16_t ADCReadCount = 0;
 
 void setup()
 {
-    ADCReading.begin();
-    
     display.SetUp();  
     display.SetDigits(-1);
 
-    // Pins 0-4 are used to select test resistor. Leave all at high impedence.
-    /*sbi(DDRC, 0);
-    cbi(PORTC, 0);
-
-    sbi(DDRC, 1);
-    cbi(PORTC, 1);
-
-    sbi(DDRC, 2);
-    cbi(PORTC, 2);
-
-    sbi(DDRC, 3);
-    cbi(PORTC, 3);
-
-    sbi(DDRC, 4);
-    cbi(PORTC, 4);*/
-
-    // Pin 5 is the input ADC pin.  
-    cbi(DDRC, 5);
-    cbi(PORTC, 5);
+    // Bits 0-4 of PORTC are used to select test resistor. 
+    // Bit 5 is used for ADC input.
     
+    // Leave all at high impedence (that's the default power-on state
+    // so we don't need to set anything up).
+    
+    // Set up ADC options. Slowest conversion, interrupts.
     ADCSRA = (1<<ADEN) | (1<<ADIE) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0);
+    
+    // ADC 5. 
   	ADMUX = 0b00000101;
 
-    ADCSRA |= 1<<ADSC;		// Start Conversion
+    // Start Conversion
+    ADCSRA |= 1<<ADSC;		
 }
-
 
 /*
     M = Max ADC value.
@@ -100,18 +88,23 @@ struct ADCTable {
 };
     
 static const ADCTable ADCTables[] = { // Values before multiplication are in ohms/10.
-    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1 },
-    { E96Values, E96ADCValues_221Ohm, E96ValuesCount, 10 },
-    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 100 },
-    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1000 },
-    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 10000 },
-    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 100000 },
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1 },      // 57.6  - 715    715
+    { E96Values, E96ADCValues_221Ohm, E96ValuesCount, 10 },     // 575   - 7.15K  7150
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 100 },    // 5.76K - 71.5K  71500
+    { E96Values, E96ADCValues_200Ohm, E96ValuesCount, 1000 },   // 57.6K - 715K   715000
+    { E96Values_Large, E96ADCValues_200Ohm_Large, E96ValuesCount_Large, 10000 },  // 576K  - 7.15M  7150000
 };
-static const int ADCTablesLength = sizeof(ADCTables) / sizeof(ADCTables[0]);
+static const auto ADCTablesLength = sizeof(ADCTables) / sizeof(ADCTables[0]);
     
 void loop()
 {
-    static int ADCTableIndex = ADCTablesLength - 1;
+    /*
+    static uint8_t ADCTableIndex = 4;
+    static bool tryNewADCTable = false;
+    sbi(DDRC, 4);
+    */
+    
+    static uint8_t ADCTableIndex = ADCTablesLength - 1;
     static bool tryNewADCTable = true;
 
     if(tryNewADCTable) {
@@ -126,13 +119,29 @@ void loop()
     uint16_t sampledADCValue;
     bool ADCValueValid = false;
     do {    
-        uint8_t readCount;
+        uint16_t copiedReadings[ADCReadingBufferLength];
+        uint16_t readCount;
+        
         ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-            sampledADCValue = ADCReading.getAvg();
+            for(uint8_t i = 0; i < ADCReadingBufferLength; ++i) {
+                copiedReadings[i] = ADCReadings[i];
+            }
             readCount = ADCReadCount;
         }
-        if(readCount >= 20) {
+        
+        if(readCount >= 100) {
             ADCValueValid = true;
+            qsort(
+                copiedReadings, 
+                sizeof(copiedReadings) / sizeof(copiedReadings[0]), 
+                sizeof(copiedReadings[0]),
+                [](const void *pLhs, const void *pRhs) {
+                  typeof(copiedReadings[0]) lhs = *((typeof(copiedReadings[0]) *)pLhs);
+                  typeof(copiedReadings[0]) rhs = *((typeof(copiedReadings[0]) *)pRhs);
+                  return (int)(lhs - rhs);
+                }
+            );
+            sampledADCValue = copiedReadings[(sizeof(copiedReadings) / sizeof(copiedReadings[0])) / 2];
             
             // Originally designed the circuit with the test and calibration resistors
             // the opposite way around...
@@ -152,11 +161,16 @@ void loop()
         sizeof(ADCTables[ADCTableIndex].ADCValues[0]),
         [](const void *key, const void *element) {
             const uint16_t sampledADCValue = *((uint16_t *)key);
+            
+            // Treat each entry in the ADC table as a 'bucket' stretching 
+            // between the two adjacent values.
             const uint16_t prevValue = pgm_read_word_near((uint16_t *)element - 1);
             const uint16_t value = pgm_read_word_near(element);
             const uint16_t nextValue = pgm_read_word_near((uint16_t *)element + 1);
             
-            if(sampledADCValue <= (value - (value - prevValue) / 2)) {
+            if(sampledADCValue == value) {
+                return 0;
+            } else if(sampledADCValue <= (value - (value - prevValue) / 2)) {
                 return -1;
             } else if(sampledADCValue > (nextValue - (nextValue - value) / 2)) {
                 return 1;
@@ -174,23 +188,23 @@ void loop()
     if(displayValue == 0xff) {
         display.SetDigits(-1);
         
-        if(!tryNewADCTable) {
-            display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
-            display.ClearSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
-            display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
-            display.ClearSymbol(LCDDisplay::LEDSymbol::UpArrowOnRight);
+        display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
+        display.ClearSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
+        display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
+        display.ClearSymbol(LCDDisplay::LEDSymbol::UpArrowOnRight);
 
-            display.SetSymbol(LCDDisplay::LEDSymbol::DottedUpsidedownT);
-            display.SetSymbol(LCDDisplay::LEDSymbol::ChartGoingNegative);
-            tryNewADCTable = true;
-        }
+        display.SetSymbol(LCDDisplay::LEDSymbol::DottedUpsidedownT);
+        display.SetSymbol(LCDDisplay::LEDSymbol::ChartGoingNegative);
+        
+        tryNewADCTable = true;
     } else {        
         uint32_t resistorValue;
-        if((millis() % 1000) < 250) {
-            resistorValue = sampledADCValue;
+  /*      if((millis() % 1000) < 250) {
+            resistorValue = sampledADCValue * 10;
         } else {
-            resistorValue = displayValue * ADCTables[ADCTableIndex].valueMultiplier;
-        }
+ */           resistorValue = displayValue * ADCTables[ADCTableIndex].valueMultiplier;
+ //       }
+        
         
         // Values are in ohms/10, have three significant digits, and always have
         // three digits (smallest is currently 57.6 ohms - or 576). 
@@ -319,12 +333,15 @@ void loop()
 
 ISR(ADC_vect)
 {
+    static uint8_t cursor = 0;
     uint16_t thisReading = ADC;
+          
+    cursor = (cursor + 1) % ADCReadingBufferLength;
     
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        ADCReading.reading(thisReading);
+        ADCReadings[cursor] = thisReading;
         ++ADCReadCount;
     }
-
+    
 	ADCSRA |= 1<<ADSC;		// Start Conversion
 }
