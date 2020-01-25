@@ -8,27 +8,18 @@
 #ifndef ADCTables_h
 #define ADCTables_h
 
+#if __has_include(<avr/pgmspace.h>) 
 #include <avr/pgmspace.h>
+#else
+#define PROGMEM
+#endif
+
 #include <stdint.h>
 
-/*
 extern const uint16_t E24Values[] PROGMEM;
 extern const uint8_t  E24ValuesCount;
 
-extern const uint16_t E24ADCValues_200Ohm[] PROGMEM;
-*/
-
-
 extern const uint16_t E96Values[] PROGMEM;
 extern const uint8_t E96ValuesCount;
-
-extern const uint16_t E96ADCValues_200Ohm[] PROGMEM;
-extern const uint16_t E96ADCValues_221Ohm[] PROGMEM;
-
-
-extern const uint16_t E96Values_Large[] PROGMEM;
-extern const uint8_t E96ValuesCount_Large;
-
-extern const uint16_t E96ADCValues_200Ohm_Large[] PROGMEM;
 
 #endif /* ADCTables_h */

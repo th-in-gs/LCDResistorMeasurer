@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name Ohmmeter)(type KiCad)(uri ${KIPRJMOD}/Ohmmeter.pretty)(options "")(descr ""))
+)
