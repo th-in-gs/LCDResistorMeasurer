@@ -88,6 +88,7 @@ public:
     void SetUp();
 
     void SetDigits(const int16_t digits);
+    void SetString(const char *string);
 
     void SetSymbol(const LEDSymbol symbol);
     void ClearSymbol(const LEDSymbol symbol);

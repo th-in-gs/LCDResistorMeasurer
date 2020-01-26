@@ -164,17 +164,24 @@ static const uint16_t DigitSegmentPortMaskForCommon[4] {
     | (DigitSegmentSymbols[2][6].CommonPin() == 3 ? (uint16_t)_BV(DigitSegmentSymbols[2][6].SegmentPin()) : 0)
 };
 
-static const uint8_t SevenSegmentCodes[10] = { 
-    0b0111111, 
-    0b0000110, 
-    0b1011011, 
-    0b1001111, 
-    0b1100110, 
-    0b1101101, 
-    0b1111101, 
-    0b0000111, 
-    0b1111111,
-    0b1101111
+static const uint8_t SevenSegmentCodes[] = { 
+    0b0111111, // 0
+    0b0000110, // 1
+    0b1011011, // 2
+    0b1001111, // 3
+    0b1100110, // 4
+    0b1101101, // 5
+    0b1111101, // 6
+    0b0000111, // 7
+    0b1111111, // 8
+    0b1101111, // 9
+    0b1110111, // A
+    0b1111100, // B
+    0b0111001, // C
+    0b1011110, // D
+    0b1111001, // E 
+    0b1110001, // F
+    0b1000000, // -
 };
 
 void LCDDisplay::SetUp() {
@@ -224,6 +231,73 @@ void LCDDisplay::SetUp() {
 
 static volatile uint16_t DisplaySegmentStateByCommon[4] = {0};
 
+static uint8_t offsetFromAscii(unsigned char ascii) {
+    switch(ascii) {
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+           return ascii - '0';
+        case 'a':
+        case 'A':
+          return 10;
+        case 'b':
+        case 'B':
+           return 11;
+        case 'c':
+        case 'C':
+            return 12;
+        case 'd':
+        case 'D':
+            return 13;
+        case 'e':
+        case 'E':
+            return 14;
+        case 'f':
+        case 'F':
+            return 15;
+        case '-':
+            return 16;
+    }
+    return 0xff;
+}
+
+void LCDDisplay::SetString(const char *string) {
+    uint16_t segmentPinsToLight[4] = {0};
+    
+    for(uint8_t i = 0; i < 3; ++i) {
+        char ch = string[i];
+        if(ch == 0) {
+            break;   
+        }
+        
+        uint8_t digit = offsetFromAscii(ch);
+        if(digit != 0xff) {
+            uint8_t segmentBitPattern = SevenSegmentCodes[digit];
+
+            for(uint8_t bit = 0; segmentBitPattern != 0; ++bit) {
+                if(segmentBitPattern & 0b1) {
+                    LEDSymbol symbol = DigitSegmentSymbols[2-i][bit];
+                    segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
+                }
+                segmentBitPattern >>= 1;
+            }
+        }
+    }
+    
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
+        for(uint8_t i = 0; i < 4; ++i) {
+            DisplaySegmentStateByCommon[i] = (DisplaySegmentStateByCommon[i] & ~(DigitSegmentPortMaskForCommon[i])) | segmentPinsToLight[i];
+        }
+    }
+}
+
 void LCDDisplay::SetDigits(int16_t digits) {
     uint16_t segmentPinsToLight[4] = {0};
 
@@ -235,9 +309,9 @@ void LCDDisplay::SetDigits(int16_t digits) {
         {
             auto digit = digits % 10;
             uint8_t segmentBitPattern = SevenSegmentCodes[digit];
-            for(uint8_t i = 0; segmentBitPattern != 0; ++i) {
+            for(uint8_t bit = 0; segmentBitPattern != 0; ++bit) {
                 if(segmentBitPattern & 0b1) {
-                    LEDSymbol symbol = DigitSegmentSymbols[0][i];
+                    LEDSymbol symbol = DigitSegmentSymbols[0][bit];
                     segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
                 }
                 segmentBitPattern >>= 1;
@@ -247,9 +321,9 @@ void LCDDisplay::SetDigits(int16_t digits) {
         if(digits >= 10) {
             auto digit = (digits / 10) % 10;
             uint8_t segmentBitPattern = SevenSegmentCodes[digit];
-            for(uint8_t i = 0; segmentBitPattern != 0; ++i) {
+            for(uint8_t bit = 0; segmentBitPattern != 0; ++bit) {
                 if(segmentBitPattern & 0b1) {
-                    LEDSymbol symbol = DigitSegmentSymbols[1][i];
+                    LEDSymbol symbol = DigitSegmentSymbols[1][bit];
                     segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
                 }
                 segmentBitPattern >>= 1;
@@ -259,9 +333,9 @@ void LCDDisplay::SetDigits(int16_t digits) {
         if(digits >= 100) {
             auto digit = (digits / 100) % 10;
             uint8_t segmentBitPattern = SevenSegmentCodes[digit];
-            for(uint8_t i = 0; segmentBitPattern != 0; ++i) {
+            for(uint8_t bit = 0; segmentBitPattern != 0; ++bit) {
                 if(segmentBitPattern & 0b1) {
-                    LEDSymbol symbol = DigitSegmentSymbols[2][i];
+                    LEDSymbol symbol = DigitSegmentSymbols[2][bit];
                     segmentPinsToLight[symbol.CommonPin()] |= _BV(symbol.SegmentPin());
                 }
                 segmentBitPattern >>= 1;
