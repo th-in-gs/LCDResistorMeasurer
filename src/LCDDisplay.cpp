@@ -229,7 +229,7 @@ void LCDDisplay::SetUp() {
     }
 }
 
-static volatile uint16_t DisplaySegmentStateByCommon[4] = {0};
+static volatile uint16_t *DisplaySegmentStateByCommon = (uint16_t[4]){0};
 
 static uint8_t offsetFromAscii(unsigned char ascii) {
     switch(ascii) {
@@ -455,7 +455,7 @@ ISR(TIMER2_COMPA_vect)
             // Not sure if this is actually necessary?
             // Do it at the end of the interrupt so that the above stuff
             // runs at 'more constant' time w.r.t. the timer firing.
-            for(uint8_t i = 0; i < sizeof(DisplaySegmentStateByCommon) / sizeof(DisplaySegmentStateByCommon[0]); ++i) {
+            for(uint8_t i = 0; i < 4; ++i) {
                 segmentPinStateByCommon[i] = DisplaySegmentStateByCommon[i];
             }
         }
