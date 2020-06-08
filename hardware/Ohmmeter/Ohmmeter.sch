@@ -609,10 +609,6 @@ Wire Wire Line
 Wire Wire Line
 	3700 1350 4050 1350
 Wire Wire Line
-	5450 1200 5450 1350
-Wire Wire Line
-	5350 1250 5350 1350
-Wire Wire Line
 	5250 1300 5250 1350
 Connection ~ 4050 1350
 Wire Wire Line
@@ -639,17 +635,6 @@ F 1 "22K" H 4120 955 50  0000 L CNN
 F 2 "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal" V 3980 1000 50  0001 C CNN
 F 3 "~" H 4050 1000 50  0001 C CNN
 	1    4050 1000
-	1    0    0    -1  
-$EndComp
-$Comp
-L Ohmmeter:DGL-0401YG-4EH DS1
-U 1 1 5E114E28
-P 5700 1100
-F 0 "DS1" H 6378 271 50  0000 L CNN
-F 1 "DGL-0401YG-4EH" H 6378 180 50  0000 L CNN
-F 2 "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Horizontal" H 5700 1100 50  0001 C CNN
-F 3 "" H 5700 1100 50  0001 C CNN
-	1    5700 1100
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
@@ -1757,4 +1742,19 @@ F 3 "~" H 7250 1600 50  0001 C CNN
 	1    7250 1600
 	1    0    0    1   
 $EndComp
+$Comp
+L Ohmmeter:DGL-0401YG-4EH DS1
+U 1 1 5E114E28
+P 5700 1100
+F 0 "DS1" H 6378 271 50  0000 L CNN
+F 1 "DGL-0401YG-4EH" H 6378 180 50  0000 L CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Horizontal" H 5700 1100 50  0001 C CNN
+F 3 "" H 5700 1100 50  0001 C CNN
+	1    5700 1100
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5350 1250 5350 1350
+Wire Wire Line
+	5450 1200 5450 1350
 $EndSCHEMATC

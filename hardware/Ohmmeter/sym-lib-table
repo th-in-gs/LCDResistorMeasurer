@@ -1,3 +1,4 @@
 (sym_lib_table
   (lib (name Ohmmeter)(type Legacy)(uri ${KIPRJMOD}/Ohmmeter.lib)(options "")(descr ""))
+  (lib (name Ohmmeter-rescue)(type Legacy)(uri ${KIPRJMOD}/Ohmmeter-rescue.lib)(options "")(descr ""))
 )
