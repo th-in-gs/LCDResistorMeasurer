@@ -128,7 +128,8 @@ void loop()
             copiedReadCount = ADCReadCount;
         }
         
-        if(copiedReadCount >= ADCReadingBufferLength * 2) {
+        if(copiedReadCount >= ADCReadingBufferLength * 2 &&
+           maxValue - minValue < 256) {
             sampledADCValue = accumulatedValues / ADCReadingBufferLength;
             ADCValueValid = true;
         } 
