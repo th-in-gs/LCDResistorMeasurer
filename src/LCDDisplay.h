@@ -7,9 +7,11 @@
 #ifndef cbi
 #define cbi(sfr, bit) (sfr &= ~_BV(bit))
 #endif
+
 #ifndef sbi
 #define sbi(sfr, bit) (sfr |= _BV(bit))
 #endif 
+
 #ifndef tbi
 #define tbi(sfr, bit) ((sfr&_BV(bit))?cbi(sfr, bit):sbi(sfr, bit))
 #endif 

@@ -229,7 +229,7 @@ void LCDDisplay::SetUp() {
     }
 }
 
-static volatile uint16_t *DisplaySegmentStateByCommon = (uint16_t[4]){0};
+static volatile uint16_t DisplaySegmentStateByCommon[4];
 
 static uint8_t offsetFromAscii(unsigned char ascii) {
     switch(ascii) {
@@ -379,7 +379,9 @@ ISR(TIMER2_COMPA_vect)
 #endif
 {
     static uint8_t phase = 0;
-    
+    // We'll copy this from global storage once per cycle - see below.
+    static uint16_t segmentPinStateByCommon[4] = {0};
+
 #if 1
     // From DataWeek "Bare LCD display drive in embedded applications"
     const uint8_t common = (phase % 4);
@@ -389,9 +391,6 @@ ISR(TIMER2_COMPA_vect)
     const uint8_t common = (phase / 2);
     const bool commonUpPhase = (phase % 2);
 #endif
-
-    // We'll copy this from global storage once per cycle - see below.
-    static uint16_t segmentPinStateByCommon[4] = {0};
 
     uint16_t segmentPinsToLight = segmentPinStateByCommon[common];
 
@@ -436,7 +435,7 @@ ISR(TIMER2_COMPA_vect)
             }
         }
             
-        for(uint16_t i = 0; i < sizeof(DDRs) / sizeof(DDRs[0]); ++i) {
+        for(uint8_t i = 0; i < sizeof(DDRs) / sizeof(DDRs[0]); ++i) {
             if(*DDRs[i] != buildDDRs[i]) {
                 *DDRs[i] = buildDDRs[i];
             }

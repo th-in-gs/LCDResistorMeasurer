@@ -7,14 +7,14 @@
 
 static LCDDisplay display;
 
-static volatile uint16_t ADCReadings[127];
-static const auto ADCReadingBufferLength = sizeof(ADCReadings) / sizeof(ADCReadings[0]);
+static const uint16_t ADCReadingBufferLength = 128;
 
-static volatile uint16_t ADCReadCount = 0;
+static volatile uint16_t ADCReadings[ADCReadingBufferLength];
+static volatile uint16_t ADCReadCount;
 
 void setup()
 {        
-    // Set up AVCC with external capacitor at AREF pin, ADC 5 selected. 
+    // Set up AVCC with external capacitor atm AREF pin, ADC 5 selected. 
   	ADMUX = 0b01000101;
 
     display.SetUp();  
@@ -45,6 +45,15 @@ E96	200	    100	    1000        100Ω - 1K   *  200      200Ω
 	200000	100000	1000000     100K - 1M   *  200000   200K
   	2000000 1000000 10000000      1M - 10M  *  2000000    2M
 
+*/
+
+/*
+extern char *__brkval;
+
+static int freeMemory() {
+  char top;
+  return __brkval ? &top - __brkval : &top - __malloc_heap_start;
+}
 */
 
 static const uint32_t ReferenceResistorValues[] = {
@@ -100,31 +109,28 @@ void loop()
     uint16_t sampledADCValue;
     bool ADCValueValid = false;
     do {    
-        uint16_t copiedReadings[ADCReadingBufferLength];
         uint16_t copiedReadCount;
-        
+        uint32_t accumulatedValues = 0;
+        uint16_t minValue = UINT16_MAX;
+        uint16_t maxValue = 0;
+
         ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-            for(uint8_t i = 0; i < ADCReadingBufferLength; ++i) {
-                copiedReadings[i] = ADCReadings[i];
+            for(uint16_t i = 0; i < ADCReadingBufferLength; ++i) {
+                uint16_t value = ADCReadings[i];
+                accumulatedValues += value;
+                if(value < minValue) {
+                    minValue = value;
+                }
+                if(value > maxValue) {
+                    maxValue = value;
+                }
             }
             copiedReadCount = ADCReadCount;
         }
         
         if(copiedReadCount >= ADCReadingBufferLength * 2) {
+            sampledADCValue = accumulatedValues / ADCReadingBufferLength;
             ADCValueValid = true;
-            
-            // Find the median.
-            qsort(
-                copiedReadings, 
-                sizeof(copiedReadings) / sizeof(copiedReadings[0]), 
-                sizeof(copiedReadings[0]),
-                [](const void *pLhs, const void *pRhs) {
-                  typeof(copiedReadings[0]) lhs = *((typeof(copiedReadings[0]) *)pLhs);
-                  typeof(copiedReadings[0]) rhs = *((typeof(copiedReadings[0]) *)pRhs);
-                  return ((int)lhs - (int)rhs);
-                }
-            );
-            sampledADCValue = copiedReadings[(sizeof(copiedReadings) / sizeof(copiedReadings[0])) / 2];
         } 
     } while(!ADCValueValid);
     
@@ -221,7 +227,8 @@ void loop()
             // If we have a table, round to the nearest value in it.
             if(valuesTableCount) {
                 char digitString[11];
-                int8_t digitsLength = sprintf(digitString, "%" PRIu32, resistorValue);
+                            
+                int8_t digitsLength = i32toa(resistorValue, digitString);
                 
                 // Make a 4 digit number to look up in our E-Value tables.
                 // (The tables are padded to 4 digits, with a 3-digit 'off the bottom'
@@ -298,12 +305,20 @@ void loop()
             
             // Display the value.
             char digitString[11];
-            int8_t digitsLength = sprintf(digitString, "%" PRIu32, roundedResistorValue);
+            //int8_t digitsLength = i32toa(freeMemory(), digitString);
+            int8_t digitsLength = i32toa(roundedResistorValue, digitString);
 
             uint16_t displayNumber = 0;        
             for(int8_t i = 0; i < digitsLength && i < 3; ++i) {
                 displayNumber = displayNumber * 10 + (digitString[i] - '0');
-            }    
+            }
+            
+            if(digitsLength >= 4) {
+                // Round for display correctly.
+                if((digitString[3] - '0') >= 5) {
+                    ++displayNumber;
+                }
+            }
 
             display.SetDigits(displayNumber);
             
@@ -404,36 +419,38 @@ void loop()
                 }
             }
             
-            if(resistorValue != roundedResistorValue) {
-                uint32_t difference;
-                if(resistorValue > roundedResistorValue) {
-                    difference = resistorValue - roundedResistorValue;
-                } else {
-                    difference = roundedResistorValue - resistorValue;
-                }
-                
-                // Are we within 5%, for E24, or 1%, for E96?
-                uint8_t percentageTimes10 = ((difference * 1000) / roundedResistorValue);
-                if(eValuesIndex != 2 &&
-                    (percentageTimes10 <= 50 && 
-                    (percentageTimes10 <= 10 || eValuesIndex == 0))) {
-                    display.SetSymbol(LCDDisplay::LEDSymbol::Target);
-                } else {
-                    display.ClearSymbol(LCDDisplay::LEDSymbol::Target);
-                }
-                
+            uint32_t difference;
+            if(resistorValue > roundedResistorValue) {
+                difference = resistorValue - roundedResistorValue;
+            } else {
+                difference = roundedResistorValue - resistorValue;
+            }
+            
+            // Are we within 5%, for E24, or 1%, for E96?
+            uint8_t percentageTimes10 = ((difference * 1000) / roundedResistorValue);
+            if(eValuesIndex != 2 &&
+               (percentageTimes10 <= 50 && 
+               (percentageTimes10 <= 10 || eValuesIndex == 0))) {
+                display.SetSymbol(LCDDisplay::LEDSymbol::Target);
+            } else {
+                display.ClearSymbol(LCDDisplay::LEDSymbol::Target);
+            }
+            
+            //display.SetDigits(percentageTimes10);
+            
+            if(percentageTimes10 >= 10) {
                 // Display if the measured value is higher or lower than the
                 // E value.
                 if(resistorValue > roundedResistorValue) {
                     display.ClearSymbol(LCDDisplay::LEDSymbol::MinusLeft);
                     display.SetSymbol(LCDDisplay::LEDSymbol::Plus);
-                } else if(resistorValue < roundedResistorValue) {
+                } else {
                     display.SetSymbol(LCDDisplay::LEDSymbol::MinusLeft);
                     display.ClearSymbol(LCDDisplay::LEDSymbol::Plus);
-                } else {
-                    display.ClearSymbol(LCDDisplay::LEDSymbol::MinusLeft);
-                    display.ClearSymbol(LCDDisplay::LEDSymbol::Plus);
                 }
+            } else {  
+                display.ClearSymbol(LCDDisplay::LEDSymbol::MinusLeft);
+                display.ClearSymbol(LCDDisplay::LEDSymbol::Plus);
             }
         }
     }
@@ -441,14 +458,15 @@ void loop()
 
 ISR(ADC_vect)
 {
-    static uint8_t ADCReadingBufferCursor = 0;
+    static uint16_t ADCReadingBufferCursor = 0;
     uint16_t thisReading = ADC;
           
     ADCReadingBufferCursor = (ADCReadingBufferCursor + 1) % ADCReadingBufferLength;
+    const uint16_t postReadCount = min(ADCReadCount + 1, UINT16_MAX - 1);
     
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
         ADCReadings[ADCReadingBufferCursor] = thisReading;
-        ++ADCReadCount;
+        ADCReadCount = postReadCount;
     }
     
 	ADCSRA |= 1<<ADSC;		// Start Conversion

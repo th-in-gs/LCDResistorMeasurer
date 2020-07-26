@@ -53,3 +53,19 @@ uint32_t ADCToOhms(uint16_t reading, uint32_t referenceOhms) {
         return ((reference32 * 1024) / (1024 - reading32)) - reference32;
     } 
 }
+
+
+static uint8_t i32toa_inner(int32_t value, char *string) {
+    uint8_t length = 0;
+    if(value >= 10) {
+        length = i32toa_inner(value / 10, string);
+    }
+    string[length] = '0' + value % 10;
+    return length + 1;
+}
+
+uint8_t i32toa(int32_t value, char *string) {
+    uint8_t length = i32toa_inner(value, string);
+    string[length] = '\0';
+    return length;
+}
