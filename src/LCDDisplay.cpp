@@ -22,6 +22,8 @@ static const typeof(&DDRB) DDRs[] = {
     &DDRD,
 };
 
+// { Port number, Bit offset } for the pins connected to the LCD common pins.
+// 'Port number' is the index into the `Ports` table above.
 static const PortDescriptor commonPorts[4] = {
     { 1, 0 }, // LCD Pin  1
     { 1, 1 }, // LCD Pin  2
@@ -29,6 +31,8 @@ static const PortDescriptor commonPorts[4] = {
     { 1, 3 }, // LCD Pin 18
 };
 
+// { Port number, Bit offset } for the pins connected to the LCD segment pins.
+// 'Port number' is the index into the `DDRs` table above.
 static const PortDescriptor segmentPorts[12] = {
     { 1, 4 }, // LCD Pin  3
     { 0, 6 }, // LCD Pin  4
@@ -44,6 +48,9 @@ static const PortDescriptor segmentPorts[12] = {
     { 0, 5 }, // LCD Pin 14
 };
 
+// The LCD contains three digits. This is a map from digit index to
+// the seven entries in the LEDSymbol table that represent the seven segments
+// of each digit.
 static const LCDDisplay::LEDSymbol DigitSegmentSymbols[3][7] = {
     {
         LCDDisplay::LEDSymbol::SevenSeg3A,
@@ -74,6 +81,11 @@ static const LCDDisplay::LEDSymbol DigitSegmentSymbols[3][7] = {
     }
 };
 
+// This looks complicated, but note that it's actually just a four-entry array!
+//
+// It maps the common pin (0-3) to a 16 bit mask which will have a '1' in every
+// position that's used by a segment in any digit that's connected to 
+// the common pin, according to the DigitSegmentSymbols table above.
 static const uint16_t DigitSegmentPortMaskForCommon[4] {
       (DigitSegmentSymbols[0][0].CommonPin() == 0 ? (uint16_t)_BV(DigitSegmentSymbols[0][0].SegmentPin()) : 0)
     | (DigitSegmentSymbols[0][1].CommonPin() == 0 ? (uint16_t)_BV(DigitSegmentSymbols[0][1].SegmentPin()) : 0)
@@ -164,6 +176,7 @@ static const uint16_t DigitSegmentPortMaskForCommon[4] {
     | (DigitSegmentSymbols[2][6].CommonPin() == 3 ? (uint16_t)_BV(DigitSegmentSymbols[2][6].SegmentPin()) : 0)
 };
 
+// Which segments should be lit for the commented digit or letter.
 static const uint8_t SevenSegmentCodes[] = { 
     0b0111111, // 0
     0b0000110, // 1
@@ -184,53 +197,7 @@ static const uint8_t SevenSegmentCodes[] = {
     0b1000000, // -
 };
 
-void LCDDisplay::SetUp() {
-    for(auto port : commonPorts) {
-        sbi(*DDRs[port.portNumber], port.offset);
-        cbi(*Ports[port.portNumber], port.offset);
-    }
-    for(auto port : segmentPorts) {
-        sbi(*DDRs[port.portNumber], port.offset);
-        cbi(*Ports[port.portNumber], port.offset);
-    }
-    
-
-    static const uint16_t LCD_AC_frequency = 32;
-    static const uint16_t timer_reset_count = ((F_CPU / 1024) / (LCD_AC_frequency * (uint16_t)8));
-    static_assert(timer_reset_count <= 255, "timer_reset_count is too large!");
-    
-    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
-        #ifdef __AVR_ATmega8__
-        {
-            TCCR2 = 0;
-            TCCR2 |= (1 << WGM21);              	           // CTC ("Clear Timer/Counter") Mode
-            TCCR2 |= (1 << CS22) | (1 << CS21) | (1 << CS20);  // A 1024 prescaler  
-            
-            TIMSK |= (1 << OCIE2);                             // Output Compare Interupt Enable
-            
-            // Set up the counter output compare to get the desired frequency.
-            // Check for overflow, just in case...
-            OCR2 = timer_reset_count;	
-            TCNT2 = 0;
-        }
-        #else
-        {
-            TCCR2A = (1 << WGM21);              	            // CTC ("Clear Timer/Counter") Mode
-            TCCR2B = (1 << CS22) | (1 << CS21) | (1 << CS20);  // A 1024 prescaler  
-            
-            TIMSK2 = (1 << OCIE2A);                            // Output Compare Interupt Enable
-            
-            // Set up the counter output compare to get the desired frequency.
-            // Check for overflow, just in case...
-            OCR2A = timer_reset_count;	
-            TCNT2 = 0;
-        }
-        #endif
-    }
-}
-
-static volatile uint16_t DisplaySegmentStateByCommon[4];
-
+// Maps from ASCII to the offset in the SevenSegmentCodes table, above.
 static uint8_t offsetFromAscii(unsigned char ascii) {
     switch(ascii) {
         case '0':
@@ -268,9 +235,61 @@ static uint8_t offsetFromAscii(unsigned char ascii) {
     return 0xff;
 }
 
+void LCDDisplay::SetUp() {
+    for(auto port : commonPorts) {
+        sbi(*DDRs[port.portNumber], port.offset);
+        cbi(*Ports[port.portNumber], port.offset);
+    }
+    for(auto port : segmentPorts) {
+        sbi(*DDRs[port.portNumber], port.offset);
+        cbi(*Ports[port.portNumber], port.offset);
+    }
+    
+
+    static const uint16_t LCD_AC_frequency = 32;
+    static const uint16_t timer_reset_count = ((F_CPU / 1024) / (LCD_AC_frequency * (uint16_t)8));
+    static_assert(timer_reset_count <= 255, "timer_reset_count is too large!");
+    
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
+        #ifdef __AVR_ATmega8__
+        {
+            TCCR2 = 0;
+            TCCR2 |= (1 << WGM21);              	           // CTC ("Clear Timer/Counter") Mode
+            TCCR2 |= (1 << CS22) | (1 << CS21) | (1 << CS20);  // A 1024 prescaler  
+            
+            TIMSK |= (1 << OCIE2);                             // Output Compare Interrupt Enable
+            
+            // Set up the counter output compare to get the desired frequency.
+            // Check for overflow, just in case...
+            OCR2 = timer_reset_count;	
+            TCNT2 = 0;
+        }
+        #else
+        {
+            TCCR2A = (1 << WGM21);              	            // CTC ("Clear Timer/Counter") Mode
+            TCCR2B = (1 << CS22) | (1 << CS21) | (1 << CS20);  // A 1024 prescaler  
+            
+            TIMSK2 = (1 << OCIE2A);                            // Output Compare Interrupt Enable
+            
+            // Set up the counter output compare to get the desired frequency.
+            // Check for overflow, just in case...
+            OCR2A = timer_reset_count;	
+            TCNT2 = 0;
+        }
+        #endif
+    }
+}
+
+// This is the most important variable in this file! It stores the current state
+// of the display.
+// It maps from each of the four common pins to the state (0 = off, 1 = on) of
+// each segment connected to that common.
+static volatile uint16_t DisplaySegmentStateByCommon[4];
+
 void LCDDisplay::SetString(const char *string) {
     uint16_t segmentPinsToLight[4] = {0};
     
+    // Work out which segments (0-6) of each digit should be set.
     for(uint8_t i = 0; i < 3; ++i) {
         char ch = string[i];
         if(ch == 0) {
@@ -291,6 +310,8 @@ void LCDDisplay::SetString(const char *string) {
         }
     }
     
+    // Map the segment indexes that should be lit to actual segments on the LCD
+    // and store them in the global DisplaySegmentStateByCommon variable.
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
         for(uint8_t i = 0; i < 4; ++i) {
             DisplaySegmentStateByCommon[i] = (DisplaySegmentStateByCommon[i] & ~(DigitSegmentPortMaskForCommon[i])) | segmentPinsToLight[i];
@@ -301,6 +322,7 @@ void LCDDisplay::SetString(const char *string) {
 void LCDDisplay::SetDigits(int16_t digits) {
     uint16_t segmentPinsToLight[4] = {0};
 
+    // Work out which segments (0-6) of each digit should be set.
     if(digits != -1) {
         if(digits >= 1000) {
             digits = 999;
@@ -343,6 +365,8 @@ void LCDDisplay::SetDigits(int16_t digits) {
         }
     }
 
+    // Map the segment indexes that should be lit to actual segments on the LCD
+    // and store them in the global DisplaySegmentStateByCommon variable.
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {     
         for(uint8_t i = 0; i < 4; ++i) {
             DisplaySegmentStateByCommon[i] = (DisplaySegmentStateByCommon[i] & ~(DigitSegmentPortMaskForCommon[i])) | segmentPinsToLight[i];
@@ -371,7 +395,8 @@ void LCDDisplay::ToggleSymbol(const LCDDisplay::LEDSymbol symbol) {
     }
 }
 
-// interrupt service routine
+// Interrupt service routine. This runs every time Timer 2 overflows - which
+// is controlled by LCD_AC_frequency and set up in LCDDisplay::SetUp(). 
 #ifdef __AVR_ATmega8__
 ISR(TIMER2_COMP_vect)
 #else
@@ -384,10 +409,12 @@ ISR(TIMER2_COMPA_vect)
 
 #if 1
     // From DataWeek "Bare LCD display drive in embedded applications"
+    // http://www.dataweek.co.za/article.aspx?pklArticleId=2382&pklCategoryId=31
     const uint8_t common = (phase % 4);
     const bool commonUpPhase = (phase < 4);
 #else
     // From AVR340 Application Note. 
+    // https://ww1.microchip.com/downloads/en/Appnotes/doc8103.pdf
     const uint8_t common = (phase / 2);
     const bool commonUpPhase = (phase % 2);
 #endif

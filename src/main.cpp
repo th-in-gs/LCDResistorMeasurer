@@ -58,7 +58,7 @@ static int freeMemory() {
 
 static const uint32_t ReferenceResistorValues[] = {
     200,
-    2210,
+    2210, // Ideal would be 2000 here, but I only had a precision 2210 resistor!
     20000,
     200000,
     2000000 
@@ -77,6 +77,10 @@ void loop()
     // Rotate through values to find one in 233 - 787 range.
     // If we're at the first table, use 0 - 787 range.
     // If we're at the last table, use 233 - 787 range. 
+    // [The actual calculation of nextReferenceResistorValueIndex was
+    // performed on the previous iteration of the loop, after the ADC
+    // value was read - see "Check if we're in the 'good' range" comment
+    // a bit lower].
     if(nextReferenceResistorValueIndex != referenceResistorValueIndex) {
         /*
         // Debug code - show which table is being used on the top row of the 
@@ -93,7 +97,7 @@ void loop()
         display.SetSymbol(symbols[nextReferenceResistorValueIndex]);
         */
 
-        // Old port back to input, high impedence.
+        // Old port back to input, high impedance.
         cbi(DDRC, referenceResistorValueIndex);
         
         referenceResistorValueIndex = nextReferenceResistorValueIndex;
@@ -106,6 +110,11 @@ void loop()
         }
     }
 
+    // The ADC is always going on in the background, filling up the ADCReadings
+    // array - see ISR(ADC_vect).
+    // We wait for the readings in the array to settle (might take a short time
+    // especially if the referenceResistorValueIndex just changed), then 
+    // an average from all the readings int he array.
     uint16_t sampledADCValue;
     bool ADCValueValid = false;
     do {    
@@ -145,7 +154,8 @@ void loop()
     }
                 
                     
-    // A switch that closes the test resistor contacts serves as an input 
+    // A switch that closes the test resistor contacts serves as an input (I 
+    // ran out of I/O pins!)
     // If it's held for over 1 second, switch the E series we're rounding to.
     bool shouldDisplaySwitchedEValues = false;
     if(sampledADCValue < 90 && referenceResistorValueIndex == 0) {
@@ -164,7 +174,10 @@ void loop()
         lineHeldLowTime = 0;
     }
     
+    // Now comes the most complex stuff in the loop - work out how to display
+    // the value we just read!
     
+    // Light up the arrow that points to the E96 or E24 index when appropriate.
     static uint8_t lastDisplayedEValuesIndex = 2;
     if(eValuesIndex != lastDisplayedEValuesIndex) {
         if(lastDisplayedEValuesIndex < 2) {
@@ -181,7 +194,9 @@ void loop()
     } 
 
 
-    if(shouldDisplaySwitchedEValues) {      
+    if(shouldDisplaySwitchedEValues) {
+        // We just changed the E series we're rounding to - display some
+        // feedback on the entire display (instead of the resistor value read).   
         display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
         display.ClearSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
         display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
@@ -192,12 +207,16 @@ void loop()
 
         display.SetString(((const char *[]){"E24", "E96", "---"})[eValuesIndex]);
     } else {
+        // The normal case - display the resistor value we just read.
+        
         uint32_t resistorValue = ADCToOhms(sampledADCValue, ReferenceResistorValues[referenceResistorValueIndex]);    
         //uint32_t resistorValue = sampledADCValue;
         
         if(resistorValue >= 1000000000 ||
            sampledADCValue >= 950 ||
-           resistorValue <= 5) {            
+           resistorValue <= 5) {
+            // Blank display. There's probably no resistor connected.
+                   
             display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
             display.ClearSymbol(LCDDisplay::LEDSymbol::DecimalPoint);
             display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
@@ -208,8 +227,9 @@ void loop()
             
             display.SetDigits(-1);
         } else {   
+            // Display the resistor value we just read.
+            
             uint32_t roundedResistorValue = resistorValue;
-
             static const uint16_t *valuesTable;
             static uint8_t valuesTableCount;
 
@@ -225,7 +245,8 @@ void loop()
                 valuesTableCount = 0;
             }
 
-            // If we have a table, round to the nearest value in it.
+            // If we have a table (E24 or E96), find the value that most
+            // closely matches the resistor under test.
             if(valuesTableCount) {
                 char digitString[11];
                             
@@ -250,17 +271,36 @@ void loop()
                 // Use the C bsearch routine (a little unorthodoxly) to find the
                 // nearest table value.
                 const size_t nearestElementIndex = (size_t)bsearch(
-                    &leading4Digits,
-                    0, // This takes a pointer really, but we're coercing it to behave like it takes indexes.
-                    valuesTableCount,
-                    1, // Size is also 1 to coerce index-like behaviour.
+                    &leading4Digits,  // The 'key' - the value we're searching for.
+                    0,                // This is supposed to be a pointer 
+                                      // but we're going to use it as an index,
+                                      // so we start at index 0.
+                    valuesTableCount, // Number of elements in the table.
+                    1,                // Size is also 1 to coerce index-like behaviour.
                     [](const void *key, const void *element) {
+                        // This is a lambda we're passing in as the comparison 
+                        // function for the bsearch routine to use.
+                        // It takes a key (which is always actually 
+                        // &leading4Digits) and an element pointer (which 
+                        // we're using as in index into the values table).
+                        
+                        // Could just use resistorValue = leading4Digits,
+                        // but we'll get it out of the key pointer we're passed
+                        // for correctness' sake.
                         const uint16_t resistorValue = *((uint16_t *)key);
+                        
+                        // The index into the values table we're currently 
+                        // consdering.
                         const size_t index = (uint8_t)(size_t)element;
                         
-                        // Treat each entry in the ADC table as a 'bucket' stretching
-                        // between the two adjacent values.
-                        
+                        // We want to find the value that's _closest_ to the 
+                        // the resistorValue - no matter if it's larger or 
+                        // smaller. So we treat each entry in the ADC table as 
+                        // a 'bucket' stretching between the halfway points
+                        // between the indexed value and the previous and next
+                        // values in the table.
+                    
+                        // We need to look up the previous, next, and current value.
                         const uint16_t prevValue = [index]() { 
                             if(index == 0) {
                                 return (uint16_t)0;
@@ -277,23 +317,27 @@ void loop()
                             }
                         }();
                         
-                        if(resistorValue == value) {
-                            return 0;
-                        } else if(resistorValue <= (value - (value - prevValue) / 2)) {
+                        if(resistorValue <= (value - (value - prevValue) / 2)) {
+                            // resistorValue is not in the bucket, and it's 
+                            // smaller than the lower end of the bucket.
                             return -1;
                         } else if(resistorValue > (nextValue - (nextValue - value) / 2)) {
+                            // resistorValue is not in the bucket, and it's 
+                            // larger than the upper end of the bucket.
                             return 1;
                         } else {
+                            // We've got a closest match, se we say it's equal.
                             return 0;
                         }
                     }
                 );
                 
+                // Look up the bsearch-found value from the table.
                 roundedResistorValue = (uint32_t)pgm_read_word_near(valuesTable + nearestElementIndex);
                 
-                // Pad the value from the table with the same number of places that 
-                // we cut off the original value (or cut off however many we padded
-                // it by).
+                // Pad the value from the table by the same number of places 
+                // that we cut off the original value (or cut off however many 
+                // we padded it by).
                 while(remainingPlaces < 0) {
                     roundedResistorValue /= 10;
                     remainingPlaces += 1;
@@ -305,24 +349,34 @@ void loop()
             }
             
             // Display the value.
+            
+            // We'll work on an ascii representation for ease of dealing with
+            // the base-10 number.
             char digitString[11];
-            //int8_t digitsLength = i32toa(freeMemory(), digitString);
             int8_t digitsLength = i32toa(roundedResistorValue, digitString);
+            //int8_t digitsLength = i32toa(freeMemory(), digitString);
 
+            // We only display max 3 digits on the LCD, so work out what 
+            // these three digits should be and store them in displayNumber
+            // (back in normal integer binary representation).
             uint16_t displayNumber = 0;        
             for(int8_t i = 0; i < digitsLength && i < 3; ++i) {
                 displayNumber = displayNumber * 10 + (digitString[i] - '0');
             }
             
+            // If we had to cut off digits, round the last one correctly.
             if(digitsLength >= 4) {
-                // Round for display correctly.
                 if((digitString[3] - '0') >= 5) {
                     ++displayNumber;
                 }
             }
 
+            // Display the digits.
             display.SetDigits(displayNumber);
             
+            // Now, we need to work out whether to light up the 'k' or 'M' 
+            // arrows, and where to place the decimal point if one is 
+            // necessary.
             char suffix = '\0';
             uint8_t decimalPlace = 0xff;
 
@@ -370,6 +424,11 @@ void loop()
                 }
             }
             
+            // Place a decimal point in the right place (either the decimal
+            // point symbol for numbers that need a point before the last digit
+            // - 00.0 style - or the colon for numbers that need it in the 
+            // second-to-last place - 0.00 style (or, really, 0:00, because 
+            // that's what our re-purposed LCD can display) 
             switch(decimalPlace) {
                 case 0: {
                     display.ClearSymbol(LCDDisplay::LEDSymbol::Colon);
@@ -395,6 +454,8 @@ void loop()
                 }
             }            
             
+            // Light up the appropriate arrow, pointing wither to 'k' or 'M' - 
+            // or no arrow if the unit it just ohms.
             switch(suffix) {
                 case '-': {
                     display.ClearSymbol(LCDDisplay::LEDSymbol::DownArrowOnRight);
@@ -427,7 +488,9 @@ void loop()
                 difference = roundedResistorValue - resistorValue;
             }
             
-            // Are we within 5%, for E24, or 1%, for E96?
+            // Are we within 5%, for E24, or 1%, for E96? If so, light up the 
+            // 'target' symbol.
+            // [Actually, are the tables such that this is always true?...]
             uint8_t percentageTimes10 = ((difference * 1000) / roundedResistorValue);
             if(eValuesIndex != 2 &&
                (percentageTimes10 <= 50 && 
@@ -441,7 +504,7 @@ void loop()
             
             if(percentageTimes10 >= 10) {
                 // Display if the measured value is higher or lower than the
-                // E value.
+                // displayed value.
                 if(resistorValue > roundedResistorValue) {
                     display.ClearSymbol(LCDDisplay::LEDSymbol::MinusLeft);
                     display.SetSymbol(LCDDisplay::LEDSymbol::Plus);
